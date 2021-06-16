@@ -1,0 +1,1 @@
+cmd_/home/alarm/driver_ontwikkeling/eindopdracht/eindopdracht.ko := ld -r -EL --build-id=sha1  -T scripts/module.lds -o /home/alarm/driver_ontwikkeling/eindopdracht/eindopdracht.ko /home/alarm/driver_ontwikkeling/eindopdracht/eindopdracht.o /home/alarm/driver_ontwikkeling/eindopdracht/eindopdracht.mod.o;  true
