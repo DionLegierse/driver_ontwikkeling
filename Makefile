@@ -1,9 +1,10 @@
 KDIR = /lib/modules/$(shell uname -r)/build
 PWD = $(shell pwd)
 MAKE = /usr/bin/make
+CPPFLAGS:=-std=c11 -W -Wall -pedantic -Werror
 
 %.ko : %.c
-	$(MAKE) $(*).ko obj-m=$(*).o -C $(KDIR) M=$(PWD) -Wno-unused-variable -Wno-unknown-pragmas modules 
+	$(MAKE) $(*).ko obj-m=$(*).o -C $(KDIR) M=$(PWD)  modules 
     
 clean:
 	rm -f *.mod.o
