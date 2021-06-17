@@ -130,22 +130,12 @@ struct driver_attribute display_attribute = {
         .name = "display",
         .mode = 00222}};
 
-struct driver_attribute brightness_attribute = {
-    .show = NULL,
-    .store = NULL,
-    .attr = {
-        .name = "brightness",
-        .mode = 00666}};
-
 struct driver_attribute enable_attribute = {
     .show = show_enable_lcd,
     .store = store_enable_lcd,
     .attr = {
         .name = "enable",
         .mode = 00666}};
-
-static struct i2c_board_info lcd_i2c_board_info = {
-    I2C_BOARD_INFO("lcd-driver", 0x3C)};
 
 const char characters[] = {
     0x00, 0x00, 0x00, 0x00, 0x00, // space
@@ -328,11 +318,23 @@ static void write_buffer_to_screen(void)
 #pragma region driver_init
 static int lcd_driver_init(void)
 {
+    u32 buffer = 0x00;
+
     printk(KERN_ALERT "eindopracht init");
 
     struct i2c_adapter *lcd_i2c_adapter = i2c_get_adapter(2);
-    i2c_new_client_device(lcd_i2c_adapter, &lcd_i2c_board_info);
 
+    struct device_node *i2c2_node = lcd_i2c_adapter->dev.of_node;
+    struct device_node *lcd_node = of_find_node_by_name(i2c2_node, "lcd_driver");
+
+    of_property_read_u32(lcd_node, "i2c-address", &buffer);
+
+    struct i2c_board_info lcd_i2c_board_info = {
+        .type = "lcd-driver",
+        .addr = buffer,
+    };
+
+    i2c_new_client_device(lcd_i2c_adapter, &lcd_i2c_board_info);
     i2c_add_driver(&i2c_driver);
 
     return 0;
@@ -356,7 +358,6 @@ static int lcd_driver_probe(struct i2c_client *client, const struct i2c_device_i
 
     printk(KERN_ALERT "eindopdracht inserting attributes");
     driver_create_file(&(i2c_driver.driver), &display_attribute);
-    driver_create_file(&(i2c_driver.driver), &brightness_attribute);
     driver_create_file(&(i2c_driver.driver), &enable_attribute);
 
     return 0;
@@ -366,7 +367,6 @@ static int lcd_driver_remove(struct i2c_client *client)
 {
     printk(KERN_ALERT "eindopracht removing attributes");
     driver_remove_file(&(i2c_driver.driver), &display_attribute);
-    driver_remove_file(&(i2c_driver.driver), &brightness_attribute);
     driver_remove_file(&(i2c_driver.driver), &enable_attribute);
     return 0;
 }
