@@ -1,4 +1,4 @@
-#pragma GCC optimize("O0")
+//#pragma GCC optimize("O0")
 
 #include <linux/module.h>
 #include <linux/platform_device.h>
@@ -18,14 +18,42 @@ MODULE_LICENSE("Dual BSD/GPL");
 #define COMMAND ((char)0x00)
 #define DATA ((char)0x40)
 
-#define PUMP_COMMAND ((char)0x8D)
+#define PUMP_COMMAND ((char)0x8D) //implemented
 #define ENABLE_SCREEN_COMMAND ((char)0xAE)
-#define SET_PAGE_COMMAND ((char)0xB0)
+#define SET_CLOCK_DIV_COMMAND ((char)0xD5)      //implemented
+#define SET_MUX_COMMAND ((char)0xA8)            //implemented
+#define SET_DISPLAY_OFFSET_COMMAND ((char)0xD3) //implemented
+#define SET_START_LINE ((char)0x40)             //implemented
+#define SET_MEMORY_MODE_COMMAND ((char)0x20)    //implemented
+#define SEG_REMAP_COMMAND ((char)0xA1)          //implemented
+#define SET_COMM_SCAN_COMMAND ((char)0xC8)      //implemented
+#define SET_COMM_PINS_COMMAND ((char)0xDA)      //implemented
+#define SET_CONTRAST_COMMAND ((char)0x81)       //implemented
+#define SET_VCOMM_DETECT_COMMAND ((char)0xDB)   //implemented
+#define SET_DISPLAY_RESUME_COMMAND ((char)0xA4) //implemented
+#define SET_NORMAL_DISPLAY ((char)0xA6)         //implemented
+#define SET_PRECHARGE_COMMAND ((char)0xD9)      //implemented
+#define SET_PAGE_ADDRESS_COMMAND ((char)0x22)
+#define SET_COLUMN_START_ADDRESS ((char)0x21)
 
-#define PUMP_SETTING ((char)0x14)
+#define PUMP_SETTING ((char)0x14)           //implemented
+#define CLOCK_DIVIDER_SETTING ((char)0x80)  //implemented
+#define MUX_SETTING ((char)31)              //implemented
+#define DISPLAY_OFFSET_SETTING ((char)0x00) //implemented
+#define MEMORY_MODE_SETTING ((char)0x00)    //implemented
+#define COMM_PINS_SETTING ((char)0x02)      //implemented
+#define CONTRAST_SETTING ((char)0x8F)       //implemented
+#define VCOMM_DETECT_SETTING ((char)0x40)   //implemented
+#define PRECHARGE_SETTING ((char)0x22)      //implemented
+#define PAGE_START ((char)0x00)
+#define PAGE_END ((char)0xFF)
+#define FIRST_COLUMN ((char)0x00)
+#define LAST_COLUMN ((char)127)
 
 #define CHARACTER_BYTES ((size_t)5)
 #define CHARACTER_SPACE ((size_t)6)
+
+#define SCREEN_WIDTH ((size_t)128)
 
 /***********************************************************/
 /************************* TYPES ***************************/
@@ -37,7 +65,10 @@ typedef unsigned int uin32_t;
 /****************** FUNCTION PROTOTYPES ********************/
 /***********************************************************/
 
-static void initialize_screen(struct i2c_client *);
+static void initialize_screen(void);
+static void reset_screen(void);
+static void reset_cursor(void);
+static void write_buffer_to_screen(void);
 
 static int lcd_driver_init(void);
 static void lcd_driver_exit(void);
@@ -53,7 +84,12 @@ static ssize_t store_display_lcd(struct device_driver *, const char *, size_t);
 /***********************************************************/
 /******************** GLOBAL VARIABLES *********************/
 /***********************************************************/
+static char _screen_buffer[1025];
+static char *screen_buffer = _screen_buffer + 1;
+
 static char lcd_display_state = 0;
+static int x = 0;
+static int y = 0;
 
 static struct i2c_client *lcd_i2c_client = NULL;
 
@@ -221,13 +257,71 @@ module_exit(lcd_driver_exit);
 /***********************************************************/
 
 #pragma region helpers
-static void initialize_screen(struct i2c_client *client)
+static void initialize_screen()
 {
+    char disable_screen[] = {COMMAND, ENABLE_SCREEN_COMMAND};
     char charge_pump_enable[] = {COMMAND, PUMP_COMMAND, PUMP_SETTING};
-    char set_page[] = {COMMAND, (SET_PAGE_COMMAND + 4)};
+    char set_clock_div[] = {COMMAND, SET_CLOCK_DIV_COMMAND, CLOCK_DIVIDER_SETTING};
+    char set_mux[] = {COMMAND, SET_MUX_COMMAND, MUX_SETTING};
+    char set_display_offset[] = {COMMAND, SET_DISPLAY_OFFSET_COMMAND, DISPLAY_OFFSET_SETTING};
+    char set_start_line[] = {COMMAND, SET_START_LINE};
+    char set_memory_mode[] = {COMMAND, SET_MEMORY_MODE_COMMAND, MEMORY_MODE_SETTING};
+    char set_comm_remap[] = {COMMAND, SEG_REMAP_COMMAND};
+    char set_comm_scan[] = {COMMAND, SET_COMM_SCAN_COMMAND};
+    char set_comm_pins[] = {COMMAND, SET_COMM_PINS_COMMAND, COMM_PINS_SETTING};
+    char set_contrast[] = {COMMAND, SET_CONTRAST_COMMAND, CONTRAST_SETTING};
+    char set_vcomm_detect[] = {COMMAND, SET_VCOMM_DETECT_COMMAND, VCOMM_DETECT_SETTING};
+    char set_display_resume[] = {COMMAND, SET_DISPLAY_RESUME_COMMAND};
+    char set_display_normal[] = {COMMAND, SET_NORMAL_DISPLAY};
+    char set_precharge[] = {COMMAND, SET_PRECHARGE_COMMAND, PRECHARGE_SETTING};
 
+    i2c_master_send(lcd_i2c_client, disable_screen, sizeof(disable_screen));
     i2c_master_send(lcd_i2c_client, charge_pump_enable, sizeof(charge_pump_enable));
-    i2c_master_send(lcd_i2c_client, set_page, sizeof(set_page));
+    i2c_master_send(lcd_i2c_client, set_clock_div, sizeof(set_clock_div));
+    i2c_master_send(lcd_i2c_client, set_mux, sizeof(set_mux));
+    i2c_master_send(lcd_i2c_client, set_display_offset, sizeof(set_display_offset));
+    i2c_master_send(lcd_i2c_client, set_start_line, sizeof(set_start_line));
+    i2c_master_send(lcd_i2c_client, set_memory_mode, sizeof(set_memory_mode));
+    i2c_master_send(lcd_i2c_client, set_comm_remap, sizeof(set_comm_remap));
+    i2c_master_send(lcd_i2c_client, set_comm_scan, sizeof(set_comm_scan));
+    i2c_master_send(lcd_i2c_client, set_comm_pins, sizeof(set_comm_pins));
+    i2c_master_send(lcd_i2c_client, set_contrast, sizeof(set_contrast));
+    i2c_master_send(lcd_i2c_client, set_vcomm_detect, sizeof(set_vcomm_detect));
+    i2c_master_send(lcd_i2c_client, set_display_resume, sizeof(set_display_resume));
+    i2c_master_send(lcd_i2c_client, set_display_normal, sizeof(set_display_normal));
+    i2c_master_send(lcd_i2c_client, set_precharge, sizeof(set_precharge));
+    reset_screen();
+}
+
+static void reset_screen(void)
+{
+    int i;
+
+    for (i = 0; i < 1024; i++)
+    {
+        ((char *)screen_buffer)[i] = (char)0x00;
+    }
+
+    write_buffer_to_screen();
+}
+
+static void reset_cursor(void)
+{
+    char set_cursor_at_first_page[] = {COMMAND, SET_PAGE_ADDRESS_COMMAND, PAGE_START, PAGE_END};
+    char set_cursor_at_first_column[] = {COMMAND, SET_COLUMN_START_ADDRESS, FIRST_COLUMN, LAST_COLUMN};
+
+    i2c_master_send(lcd_i2c_client, set_cursor_at_first_page, sizeof(set_cursor_at_first_page));
+    i2c_master_send(lcd_i2c_client, set_cursor_at_first_column, sizeof(set_cursor_at_first_column));
+
+    x = y = 0;
+}
+
+static void write_buffer_to_screen(void)
+{
+    reset_cursor();
+    _screen_buffer[0] = DATA;
+    i2c_master_send(lcd_i2c_client, _screen_buffer, 1025);
+    reset_cursor();
 }
 #pragma endregion
 
@@ -258,7 +352,7 @@ static int lcd_driver_probe(struct i2c_client *client, const struct i2c_device_i
 {
     lcd_i2c_client = client;
 
-    initialize_screen(lcd_i2c_client);
+    initialize_screen();
 
     printk(KERN_ALERT "eindopdracht inserting attributes");
     driver_create_file(&(i2c_driver.driver), &display_attribute);
@@ -318,15 +412,27 @@ static ssize_t store_display_lcd(struct device_driver *device, const char *buffe
     char current_char;
     size_t character_offset;
 
+    reset_screen();
+
     for (i = 0; i < size; i++)
     {
         current_char = buffer[i];
-        if (current_char >= ' ' && current_char <= '~')
+
+        if (current_char == '\n' || x >= (SCREEN_WIDTH - CHARACTER_SPACE))
+        {
+            x = 0;
+            y += 1;
+        }
+
+        if (current_char >= ' ' && current_char <= '~' && !(x == 0 && current_char == ' '))
         {
             character_offset = (current_char - ' ') * CHARACTER_BYTES;
-            i2c_master_send(lcd_i2c_client, characters + character_offset, CHARACTER_BYTES);
+            memcpy(screen_buffer + (x + (SCREEN_WIDTH * y)), characters + character_offset, CHARACTER_BYTES);
+            x += CHARACTER_SPACE;
         }
     }
+
+    write_buffer_to_screen();
     return size;
 }
 
